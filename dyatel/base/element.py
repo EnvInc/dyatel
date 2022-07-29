@@ -10,7 +10,7 @@ from dyatel.dyatel_sel.core.core_driver import CoreDriver
 from dyatel.dyatel_play.play_element import PlayElement
 from dyatel.dyatel_sel.elements.mobile_element import MobileElement
 from dyatel.dyatel_sel.elements.web_element import WebElement
-from dyatel.internal_utils import WAIT_EL
+from dyatel.mixins.internal_utils import WAIT_EL
 
 
 class Element(WebElement, MobileElement, PlayElement):
@@ -87,10 +87,10 @@ class Element(WebElement, MobileElement, PlayElement):
             info(f'Wait until elements count will be equal to "{elements_count}"')
 
         start_time = time.time()
-        while time.time() - start_time < timeout and self.get_elements_count() != elements_count:
+        while time.time() - start_time < timeout and self.get_elements_count(silent=True) != elements_count:
             pass
 
-        actual_elements_count = self.get_elements_count()
+        actual_elements_count = self.get_elements_count(silent=True)
 
         if actual_elements_count != elements_count:
             raise Exception(f'Unexpected elements count of "{self.name}". '

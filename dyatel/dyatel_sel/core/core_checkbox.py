@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import time
-from logging import info
-
 from selenium.webdriver.remote.webelement import WebElement as SeleniumWebElement
 
 from dyatel.dyatel_sel.core.core_element import CoreElement
-from dyatel.internal_utils import WAIT_EL
 
 
 class CoreCheckbox(CoreElement):
@@ -77,24 +73,3 @@ class CoreCheckbox(CoreElement):
         :return: checkbox text
         """
         return self.element.text if self.element.text else self.element.get_attribute('value')
-
-    def wait_clickable(self, silent=False, timeout=WAIT_EL) -> CoreCheckbox:
-        """
-        Wait until checkbox become clickable
-        Selenium `element_to_be_clickable` doesn't work for some checkboxes
-
-        :param silent: erase log
-        :param timeout: wait timeout
-        :return: self
-        """
-        if not silent:
-            info(f'Wait until "{self.name}" become clickable')
-
-        start_time = time.time()
-        while time.time() - start_time < timeout and not self.element.is_enabled():
-            pass
-
-        if not self.element.is_enabled():
-            raise Exception(f'"{self.name}" not clickable')
-
-        return self

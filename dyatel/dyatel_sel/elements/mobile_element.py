@@ -3,15 +3,17 @@ from __future__ import annotations
 from logging import info
 from typing import Union, List, BinaryIO, Any
 
+from dyatel.dyatel_sel.core.core_driver import CoreDriver
 from dyatel.dyatel_sel.core.core_element import CoreElement
-from dyatel.internal_utils import calculate_coordinate_to_click
-from dyatel.js_scripts import get_element_position_on_screen_js
+from dyatel.dyatel_sel.sel_utils import get_legacy_selector, get_locator_type
+from dyatel.mixins.internal_utils import calculate_coordinate_to_click, WAIT_EL
+from dyatel.js_scripts import get_element_position_on_screen_js, click_js, is_displayed_js
 
 
 class MobileElement(CoreElement):
 
-    def __init__(self, locator: str, locator_type='', name='',
-                 parent: Union[MobileElement, Any] = None, wait=False):
+    def __init__(self, locator: str, locator_type: str = '', name: str = '',
+                 parent: Union[MobileElement, Any] = None, wait: bool = False):
         """
         Initializing of mobile element with appium driver
 
@@ -21,9 +23,13 @@ class MobileElement(CoreElement):
         :param parent: parent of element. Can be MobileElement, MobilePage, Group objects
         :param wait: include wait/checking of element in wait_page_loaded/is_page_opened methods of Page
         """
-        CoreElement.__init__(self, locator=locator, locator_type=locator_type, name=name, parent=parent, wait=wait)
+        self.is_safari_driver = CoreDriver.is_safari_driver
 
-    @property
+        self.locator_type = locator_type if locator_type else get_locator_type(locator)
+        self.locator, self.locator_type = get_legacy_selector(locator, self.locator_type)
+
+        super().__init__(locator=self.locator, locator_type=self.locator_type, name=name, parent=parent, wait=wait)
+
     def all_elements(self) -> List[Any]:
         """
         Get all wrapped elements with selenium bases
@@ -32,6 +38,56 @@ class MobileElement(CoreElement):
         """
         appium_elements = self._get_driver().find_elements(self.locator_type, self.locator)
         return self._get_all_elements(appium_elements, MobileElement)
+
+    def wait_element(self, timeout: int = WAIT_EL, silent: bool = False) -> MobileElement:
+        """
+        Wait for current element available in page
+        SafariDriver: Wait for current element available in DOM
+
+        :param: timeout: time to stop waiting
+        :param: silent: erase log
+        :return: self
+        """
+        if self.is_safari_driver:
+            self.wait_availability(timeout=timeout, silent=silent)
+        else:
+            super().wait_element(timeout=timeout, silent=silent)
+
+        return self
+
+    def click(self) -> MobileElement:
+        """
+        Click to current element
+        SafariDriver: Click to current element by JS
+
+        :return: self
+        """
+        if self.is_safari_driver:
+            self.wait_element(silent=True).wait_clickable(silent=True)
+            self.driver.execute_script(click_js, self.element)
+        else:
+            super().click()
+
+        return self
+
+    def is_displayed(self, silent: bool = False) -> bool:
+        """
+        Check visibility of element
+        SafariDriver: Check visibility by JS
+
+        :param: silent: erase log
+        :return: True if element visible
+        """
+        if self.is_safari_driver:
+            if not silent:
+                info(f'Check displaying of "{self.name}"')
+
+            try:
+                return self.driver.execute_script(is_displayed_js, self._get_element(wait=False))
+            except:
+                return False
+        else:
+            return super().is_displayed(silent=silent)
 
     def hover(self) -> MobileElement:
         """
@@ -47,7 +103,7 @@ class MobileElement(CoreElement):
             .perform()
         return self
 
-    def click_outside(self, x=0, y=-5) -> MobileElement:
+    def click_outside(self, x: int = 0, y: int = -5) -> MobileElement:
         """
         Click outside of element. By default, 5px above  of element
 
@@ -63,7 +119,7 @@ class MobileElement(CoreElement):
             .perform()
         return self
 
-    def get_screenshot(self, filename, legacy=True) -> BinaryIO:
+    def get_screenshot(self, filename: str, legacy: bool = True) -> BinaryIO:
         """
         Taking element screenshot and saving with given path/filename
 
@@ -73,8 +129,8 @@ class MobileElement(CoreElement):
         """
         if self.driver_wrapper.is_ios and legacy:
             element_box = self._element_box()
-            window_width = self.driver.get_window_size()['width']
-            img_binary = self.driver_wrapper.driver.get_screenshot_as_png()  # FIXME
+            window_width = self.driver.get_window_size()['width']  # FIXME
+            img_binary = self.driver_wrapper.get_screenshot()
             scaled_image = self._scaled_screenshot(img_binary, window_width)
             image_binary = scaled_image.crop(element_box)
             image_binary.save(filename)

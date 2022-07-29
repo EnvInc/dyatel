@@ -7,7 +7,6 @@ from typing import Union, List, Any
 
 from PIL import Image
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, StaleElementReferenceException
-from appium.webdriver.webdriver import WebDriver as AppiumWebDriver
 from selenium.webdriver.remote.webdriver import WebDriver as SeleniumWebDriver
 from selenium.webdriver.remote.webelement import WebElement as SeleniumWebElement
 from selenium.webdriver.support import expected_conditions as ec
@@ -16,14 +15,15 @@ from selenium.common.exceptions import WebDriverException
 from selenium.webdriver import ActionChains
 
 from dyatel.shared_utils import cut_log_data
-from dyatel.internal_utils import get_child_elements, Mixin, WAIT_EL, initialize_objects_with_args, DriverMixin
+from dyatel.mixins.internal_utils import get_child_elements, WAIT_EL, initialize_objects_with_args
+from dyatel.mixins.element_mixin import ElementMixin
+from dyatel.mixins.driver_mixin import DriverMixin
 from dyatel.dyatel_sel.core.core_driver import CoreDriver
-from dyatel.dyatel_sel.sel_utils import get_locator_type, get_legacy_selector
 
 
-class CoreElement(Mixin, DriverMixin):
+class CoreElement(ElementMixin, DriverMixin):
 
-    def __init__(self, locator: str, locator_type='', name='', parent=None, wait=False):
+    def __init__(self, locator: str, locator_type: str = '', name: str = '', parent: Any = None, wait: bool = False):
         """
         Initializing of core element with appium/selenium driver
         Contain same methods/data for both WebElement and MobileElement classes
@@ -37,14 +37,10 @@ class CoreElement(Mixin, DriverMixin):
         self._initialized = True
         self._driver_instance = CoreDriver
 
-        if isinstance(self.driver, AppiumWebDriver):
-            self.locator, self.locator_type = get_legacy_selector(locator, get_locator_type(locator))
-        else:
-            self.locator = locator
-            self.locator_type = locator_type if locator_type else get_locator_type(locator)
-
+        self.locator = locator
+        self.locator_type = locator_type
         self.name = name if name else self.locator
-        self.parent: Union[CoreElement, Any] = parent if parent else None
+        self.parent: Any = parent
         self.wait = wait
 
         self.child_elements: List[CoreElement] = get_child_elements(self, CoreElement)
@@ -62,7 +58,7 @@ class CoreElement(Mixin, DriverMixin):
         return self._get_element(wait=True)
 
     @element.setter
-    def element(self, selenium_element):
+    def element(self, selenium_element: SeleniumWebElement):
         """
         Current class element setter. Try to avoid usage of this function
 
@@ -82,7 +78,7 @@ class CoreElement(Mixin, DriverMixin):
         self.wait_element(silent=True).wait_clickable(silent=True).element.click()
         return self
 
-    def type_text(self, text, silent=False) -> CoreElement:
+    def type_text(self, text: str, silent: bool = False) -> CoreElement:
         """
         Type text to current element
 
@@ -97,7 +93,7 @@ class CoreElement(Mixin, DriverMixin):
         self.wait_element(silent=True).element.send_keys(text)
         return self
 
-    def type_slowly(self, text, sleep_gap=0.05, silent=False) -> CoreElement:
+    def type_slowly(self, text: str, sleep_gap: float = 0.05, silent: bool = False) -> CoreElement:
         """
         Type text to current element slowly
 
@@ -117,7 +113,7 @@ class CoreElement(Mixin, DriverMixin):
             time.sleep(sleep_gap)
         return self
 
-    def clear_text(self, silent=False) -> CoreElement:
+    def clear_text(self, silent: bool = False) -> CoreElement:
         """
         Clear text from current element
 
@@ -132,7 +128,7 @@ class CoreElement(Mixin, DriverMixin):
 
     # Element waits
 
-    def wait_element(self, timeout=WAIT_EL, silent=False) -> CoreElement:
+    def wait_element(self, timeout: int = WAIT_EL, silent: bool = False) -> CoreElement:
         """
         Wait for current element available in page
 
@@ -149,7 +145,7 @@ class CoreElement(Mixin, DriverMixin):
         )
         return self
 
-    def wait_element_without_error(self, timeout=WAIT_EL, silent=False) -> CoreElement:
+    def wait_element_without_error(self, timeout: int = WAIT_EL, silent: bool = False) -> CoreElement:
         """
         Wait until element hidden
 
@@ -162,12 +158,12 @@ class CoreElement(Mixin, DriverMixin):
 
         try:
             self.wait_element(timeout=timeout, silent=True)
-        except (NoSuchElementException, TimeoutException, WebDriverException) as exception:
+        except (NoSuchElementException, TimeoutException, WebDriverException, Exception) as exception:
             if not silent:
                 info(f'Ignored exception: "{exception}"')
         return self
 
-    def wait_element_hidden(self, timeout=WAIT_EL, silent=False) -> CoreElement:
+    def wait_element_hidden(self, timeout: int = WAIT_EL, silent: bool = False) -> CoreElement:
         """
         Wait until element hidden
 
@@ -192,7 +188,7 @@ class CoreElement(Mixin, DriverMixin):
 
         return self
 
-    def wait_clickable(self, timeout=WAIT_EL, silent=False) -> CoreElement:
+    def wait_clickable(self, timeout: int = WAIT_EL, silent: bool = False) -> CoreElement:
         """
         Wait until element clickable
 
@@ -201,15 +197,18 @@ class CoreElement(Mixin, DriverMixin):
         :return: self
         """
         if not silent:
-            info(f'Wait until clickable of "{self.name}"')
+            info(f'Wait until "{self.name}" become clickable')
 
-        message = f'Element "{self.name}" not clickable. {self.get_element_logging_data()}'
-        self._get_wait(timeout).until(
-            ec.element_to_be_clickable((self.locator_type, self.locator)), message=message
-        )
+        start_time = time.time()
+        while time.time() - start_time < timeout and not self.element.is_enabled():
+            pass
+
+        if not self.element.is_enabled():
+            raise Exception(f'"{self.name}" not clickable')
+
         return self
 
-    def wait_availability(self, timeout=WAIT_EL, silent=False) -> CoreElement:
+    def wait_availability(self, timeout: int = WAIT_EL, silent: bool = False) -> CoreElement:
         """
         Wait for current element available in DOM
 
@@ -232,12 +231,14 @@ class CoreElement(Mixin, DriverMixin):
 
     # Element state
 
-    def scroll_into_view(self, block='center', behavior='instant', sleep=0) -> CoreElement:
+    def scroll_into_view(self, block: str = 'center', behavior: str = 'instant',
+                         sleep: Union[int, float] = 0) -> CoreElement:
         """
         Scroll element into view by js script
 
         :param: block: start - element on the top; end - element at the bottom
         :param: behavior: scroll type: smooth or instant
+        :param: sleep: delay after scroll
         :return: self
         """
         info(f'Scroll element "{self.name}" into view')
@@ -253,7 +254,7 @@ class CoreElement(Mixin, DriverMixin):
 
         return self
 
-    def get_screenshot(self, filename) -> Image:
+    def get_screenshot(self, filename: str) -> Image:
         """
         Taking element screenshot and saving with given path/filename
 
@@ -283,7 +284,6 @@ class CoreElement(Mixin, DriverMixin):
 
         :return: element text
         """
-        info(f'Get text from "{self.name}"')
         return self.element.text
 
     @property
@@ -293,8 +293,7 @@ class CoreElement(Mixin, DriverMixin):
 
         :return: element inner text
         """
-        text = self.get_attribute('textContent') or self.get_attribute('innerText')
-        return text
+        return self.get_attribute('textContent', silent=True) or self.get_attribute('innerText', silent=True)
 
     @property
     def get_value(self) -> str:
@@ -303,7 +302,7 @@ class CoreElement(Mixin, DriverMixin):
 
         :return: element value
         """
-        return self.get_attribute('value')
+        return self.get_attribute('value', silent=True)
 
     def is_available(self) -> bool:
         """
@@ -314,7 +313,7 @@ class CoreElement(Mixin, DriverMixin):
         is_available = self._get_driver(wait=False).find_elements(self.locator_type, self.locator)
         return bool(len(is_available))
 
-    def is_displayed(self, silent=False) -> bool:
+    def is_displayed(self, silent: bool = False) -> bool:
         """
         Check visibility of element
 
@@ -331,7 +330,7 @@ class CoreElement(Mixin, DriverMixin):
 
         return result
 
-    def is_hidden(self, silent=False) -> bool:
+    def is_hidden(self, silent: bool = False) -> bool:
         """
         Check invisibility of current element
 
@@ -343,7 +342,7 @@ class CoreElement(Mixin, DriverMixin):
 
         return not self.is_displayed()
 
-    def get_attribute(self, attribute, silent=False) -> str:
+    def get_attribute(self, attribute: str, silent: bool = False) -> str:
         """
         Get custom attribute from current element
 
@@ -356,7 +355,7 @@ class CoreElement(Mixin, DriverMixin):
 
         return self.wait_element(silent=True).element.get_attribute(attribute)
 
-    def get_elements_texts(self, silent=False) -> List[str]:
+    def get_elements_texts(self, silent: bool = False) -> List[str]:
         """
         Get all texts from all matching elements
 
@@ -369,7 +368,7 @@ class CoreElement(Mixin, DriverMixin):
         self.wait_element(silent=True)
         return list(element_item.text for element_item in getattr(self, 'all_elements'))
 
-    def get_elements_count(self, silent=False) -> int:
+    def get_elements_count(self, silent: bool = False) -> int:
         """
         Get elements count
 
@@ -383,7 +382,7 @@ class CoreElement(Mixin, DriverMixin):
 
     # Mixin
 
-    def _get_driver(self, wait=True) -> Union[SeleniumWebDriver, SeleniumWebElement]:
+    def _get_driver(self, wait: bool = True) -> Union[SeleniumWebDriver, SeleniumWebElement]:
         """
         Get driver with depends on parent element if available
 
@@ -407,7 +406,7 @@ class CoreElement(Mixin, DriverMixin):
 
         return base
 
-    def _get_wait(self, timeout=WAIT_EL) -> WebDriverWait:
+    def _get_wait(self, timeout: int = WAIT_EL) -> WebDriverWait:
         """
         Get wait with depends on parent element if available
 
@@ -424,7 +423,7 @@ class CoreElement(Mixin, DriverMixin):
         """
         return ActionChains(self.driver)
 
-    def _scaled_screenshot(self, screenshot_binary, width) -> Image:
+    def _scaled_screenshot(self, screenshot_binary: bin, width: int) -> Image:
         """
         Get scaled screenshot to fit driver window / element size
 
@@ -441,7 +440,7 @@ class CoreElement(Mixin, DriverMixin):
 
         return img_binary
 
-    def _get_element(self, wait=True) -> SeleniumWebElement:
+    def _get_element(self, wait: bool = True) -> SeleniumWebElement:
         """
         Get selenium element from driver or parent element
 
